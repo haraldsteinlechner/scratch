@@ -9,6 +9,106 @@ open Aardvark.Application.WinForms
 
 open System.Numerics
 
+open FSharp.Quotations
+
+
+[<ReflectedDefinition>]
+module Nat =
+    type Head = 
+        abstract member Check : bool
+        abstract member Infer : (unit -> unit) -> unit
+    type True() = 
+        interface Head with
+            member x.Check = true
+            member x.Infer _ = ()
+    type Rule<'a>([<ReflectedDefinition>]v : 'a) = 
+        interface Head with
+            member x.Check = true
+            member x.Infer _ = ()
+    type And<'a,'b>(r : Rule<'a>, l : Rule<'b>) = 
+        interface Head with
+            member x.Check = true
+            member x.Infer _ = ()
+
+    type Rule = Head * (unit -> unit) // check head and reduction
+
+
+    [<ReflectedDefinition>]
+    let (<==) (thing : 'a) (r : Head) = ()
+    [<ReflectedDefinition>]
+    let (==>) (r : Head) (thing : 'a)  = 
+        ()
+
+    let (&&&) l r = And(Rule l,Rule r)
+    let True = True()
+    let solve (binder : 'a -> 'b) = ()
+    
+    type N = interface end
+    type Z() = interface N
+
+    type Succ<'s when 's :> N> = Succ of 's interface N
+    type Int<'a> = Int of 'a
+    type Counting() =
+        member x.Int (       ) =        True  ==> Int (Z ())
+        member x.Int ( m : N ) = Rule (Int m) ==> Int (Succ m) 
+
+    type Sum<'a,'b,'c when 'a :> N and 'b :> N and 'c :> N> = Sum of 'a * 'b * 'c
+    type Addition() =
+
+        member x.Sum (Z : Z, M : N) = 
+            True ==> Sum(Z, M, M)
+
+        member x.Sum (N : N, M : N, K : N) = 
+            Rule ( Sum (N, M, K) ) ==>
+                Sum ( Succ N, N, Succ K ) 
+
+    type Prod<'a,'b,'c when 'a :> N and 'b :> N and 'c :> N> = Prod of 'a * 'b * 'c
+    type Product() =
+        
+        member x.Prod(Z : Z, M : N) =
+            True ==> Prod (Z, M, Z)
+
+        member x.Prod(N : N, M : N, P : N, K : N) =
+            Prod(N,M,K) &&& Sum (K,M,P) ==>
+                Prod (Succ(N), M, P) 
+
+    let test = solve ( fun (r : N) -> Sum(Z(), Z(), r) )
+
+//    let rules = 
+//         [ for m in typeof<Product>.GetMethods() do
+//            yield FSharp.Quotations.Expr.TryGetReflectedDefinition m ]
+//
+//    let universe = [ Z :> obj ]
+    
+    let testE = 
+        <@ fun (Z : Z, M : N) -> True ==> Sum(Z, M, M) @>
+    let testE2 = 
+        <@ fun (N : N, M : N, K : N)  -> Rule ( Sum (N, M, K) ) ==> Sum ( Succ N, N, Succ K )  @>
+    open FSharp.Quotations.Patterns
+    open FSharp.Quotations.DerivedPatterns
+
+    let matchRule (e : Expr) =
+        match e with
+            | DerivedPatterns.SpecificCall <@ (==>) @> (a, types, [premise;conclusion]) -> 
+                Some (types, premise, conclusion)
+            | _ -> None
+
+    let rec cleanup (e : Expr) =
+        match e with
+            | Patterns.Let(e,Patterns.Var binder,body) when e.Name = binder.Name && e.Type = binder.Type ->  cleanup body
+            | _ -> e
+
+    let k = 
+        match testE2 with
+            | Lambdas(vars,expr) ->
+                match matchRule (cleanup expr) with
+                    | None -> printfn "JD"
+                    | Some (t,p,c) -> printfn "%A ==> %A" p c
+            | Lambdas(vars,expr) -> printfn "missed: %A" expr
+            | _ -> printfn "noope"
+
+
+
 
 [<EntryPoint>]
 let main argv = 
